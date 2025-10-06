@@ -1,0 +1,730 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>🍬 Candy Clicker — Admin Edition</title>
+<style>
+  :root{
+    --accent:#ff6fb5; --accent-dark:#d94388; --muted:#666; --panel:#ffffffcc; --shadow:0 8px 24px rgba(0,0,0,0.12);
+  }
+  html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;color:#111;transition:background 1s;}
+  .app{display:grid;grid-template-columns:340px 1fr 360px;gap:16px;height:100vh;padding:16px;box-sizing:border-box;}
+  .panel{background:var(--panel);border-radius:12px;padding:12px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:8px;}
+  .title{display:flex;align-items:center;gap:8px}
+  h1{margin:0;font-size:18px}
+  .score{font-weight:700;font-size:20px;color:var(--accent-dark)}
+  #clickBtn{width:160px;height:160px;border-radius:50%;background:radial-gradient(circle,#ffd9ec,#ff6fb5);border:8px solid #ffa3d6;font-size:48px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 12px 30px rgba(217,33,101,0.18)}
+  .gameArea{background:linear-gradient(180deg,#fff,#fff8fb);border-radius:10px;border:2px dashed #ffeaf3;overflow:hidden;position:relative}
+  .worker{position:absolute;font-size:28px;user-select:none;cursor:grab;will-change:left,top,transform}
+  .pop{position:absolute;pointer-events:none;font-weight:700;text-shadow:0 6px 18px rgba(0,0,0,0.12)}
+  /* tutorial & settings modal */
+  .modal{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:999;background:var(--panel);padding:14px;border-radius:10px;box-shadow:var(--shadow);display:none;max-width:420px}
+  .btn{padding:8px 10px;border-radius:8px;border:none;cursor:pointer;background:white;box-shadow:0 8px 18px rgba(0,0,0,0.06)}
+  .buyBtn{padding:8px 10px;border-radius:8px;border:none;background:var(--accent);color:white;cursor:pointer}
+  .muted{color:var(--muted);font-size:13px}
+  /* mini game */
+  .mole{display:flex;align-items:center;justify-content:center;height:72px;border-radius:8px;background:linear-gradient(180deg,#fff,#ffe9f2);font-size:32px;cursor:pointer}
+  /* particles */
+  .particle{position:absolute;width:18px;height:18px;font-size:18px;pointer-events:none;will-change:transform,opacity}
+  /* owner panel collapsed details */
+  .ownerActions{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+  .settingsRow{display:flex;gap:8px;align-items:center}
+  /* dark theme variables override for night */
+  .night{background:linear-gradient(180deg,#0f1020,#141426);color:#e7e7f3}
+  .night .panel{background:rgba(20,18,35,0.68)}
+  .night .gameArea{background:linear-gradient(180deg,#101019,#11101a)}
+  @media (max-width:1100px){ .app{grid-template-columns:1fr;grid-template-rows:auto 1fr auto;overflow:auto} }
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+  <!-- LEFT: score, click, upgrades -->
+  <div class="panel">
+    <div class="title"><h1>🍬 Candy Clicker (Admin)</h1><div style="margin-left:auto" class="muted">v-admin</div></div>
+    <div class="score" id="scoreDisplay">Candies: 0</div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <div class="muted">Click power: <span id="clickPower">1</span></div>
+      <div style="margin-left:auto" class="muted">Workers: <span id="workerCount">0</span></div>
+    </div>
+
+    <div style="display:flex;justify-content:center;margin-top:6px">
+      <button id="clickBtn" title="Click to get candies">🍭</button>
+    </div>
+    <div id="popLayer" style="position:relative;height:0;"></div>
+
+    <div style="display:flex;gap:8px;align-items:center;justify-content:space-between">
+      <div class="shopTabs">
+        <button class="btn" data-tab="workers" id="tabWorkers">Workers</button>
+        <button class="btn" data-tab="clickers" id="tabClickers">Clickers</button>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn" id="openTutorial">Tutorial</button>
+        <button class="btn" id="openSettings">Settings</button>
+      </div>
+    </div>
+
+    <div id="upgradeList" style="display:flex;flex-direction:column;gap:8px;margin-top:8px;overflow:auto"></div>
+  </div>
+
+  <!-- CENTER: game area -->
+  <div class="panel" style="padding:8px;display:flex;flex-direction:column">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div class="muted">Game Area — drag workers, watch physics</div>
+      <div class="muted">Last saved: <span id="lastSaved">never</span></div>
+    </div>
+    <div class="gameArea" id="gameArea" style="height:70vh;margin-top:8px"></div>
+  </div>
+
+  <!-- RIGHT: mini, gamble, owner -->
+  <div class="panel">
+    <h3 style="margin:0">Mini-game: Whack-a-Mole</h3>
+    <div id="moleGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px"></div>
+    <div style="height:8px"></div>
+
+    <div style="margin-top:6px">
+      <h3 style="margin:0">Gamble</h3>
+      <div class="settingsRow" style="margin-top:6px">
+        <input id="gambleAmount" type="number" value="10" style="flex:1;padding:6px;border-radius:6px;border:1px solid #ddd">
+        <button class="buyBtn" id="rollGamble">Roll</button>
+      </div>
+      <div id="gambleResult" class="muted" style="margin-top:6px"></div>
+    </div>
+
+    <div style="margin-top:10px">
+      <h3 style="margin:0">Owner / Admin</h3>
+      <div class="muted">Enter owner password</div>
+      <input id="ownerPass" type="password" placeholder="password" style="width:100%;padding:6px;border-radius:6px;border:1px solid #ddd;margin-top:6px">
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <button class="btn" id="ownerUnlock">Unlock</button>
+        <button class="btn" id="ownerLock" style="display:none">Lock</button>
+      </div>
+
+      <div id="ownerArea" style="display:none;margin-top:8px" class="ownerActions">
+        <div class="muted">Local saves (current browser):</div>
+        <select id="localSaves" size="4" style="width:100%"></select>
+        <div style="display:flex;gap:6px">
+          <button class="btn" id="viewSave">View</button>
+          <button class="btn" id="exportSave">Export</button>
+          <button class="btn" id="deleteSave">Delete</button>
+        </div>
+
+        <div style="margin-top:6px">
+          <div class="muted">Import a save file (JSON):</div>
+          <input id="importFile" type="file" accept="application/json">
+          <button class="btn" id="importApply">Apply Import</button>
+        </div>
+
+        <div style="margin-top:6px">
+          <div class="muted">Admin cloud sync (placeholder):</div>
+          <div class="muted">You can configure a server to store saves and then use the cloud buttons below (server + auth required).</div>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <button class="btn" id="cloudUpload">Upload To Cloud (demo)</button>
+            <button class="btn" id="cloudList">List Cloud Saves (demo)</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Tutorial modal -->
+<div class="modal" id="tutorial">
+  <h2>Tutorial</h2>
+  <ol>
+    <li>Click the candy to earn candies. Watch the score in the top-left.</li>
+    <li>Buy workers and upgrades from the left panel.</li>
+    <li>Drag workers around — physics gives them weight and bounce.</li>
+    <li>Play mini-games and gamble in the right panel.</li>
+    <li>Use Settings to Save/Load or open the Owner panel for import/export.</li>
+  </ol>
+  <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" id="closeTutorial">Close</button></div>
+</div>
+
+<!-- Settings modal -->
+<div class="modal" id="settingsPanel" style="width:420px;">
+  <h2>Settings</h2>
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn" id="saveBtn">Save (local)</button>
+      <button class="btn" id="downloadSave">Download Save</button>
+      <button class="btn" id="loadBtn">Load (local)</button>
+      <button class="btn" id="clearBtn">Clear Save</button>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <label><input type="checkbox" id="toggleMusic" checked> Music</label>
+      <label><input type="checkbox" id="toggleParticles" checked> Particles</label>
+    </div>
+    <div style="display:flex;justify-content:flex-end"><button class="btn" id="closeSettings">Close</button></div>
+  </div>
+</div>
+
+<!-- Background music (small loop) -->
+<audio id="bgMusic" loop src="91b66ce4-cc6f-42f0-a1cd-1fe4b5fec22d.mp3"></audio>
+
+<script>
+/* ===========================
+   FULL GAME (single-file)
+   - physics for workers (simple)
+   - particles flying to score
+   - owner admin: view/export/import local saves
+   - placeholder cloud sync API calls (do NOT connect without auth)
+   - day/night theme
+   - lots of animations/effects
+   Note: This is a single-file client-only demo. Cross-device sync requires a backend.
+   =========================== */
+
+/* ---------- State ---------- */
+const SAVE_PREFIX = 'candy_clicker_admin_save_v1'; // used to name saves in localStorage
+let state = {
+  candies: 0,
+  clickPower: 1,
+  upgrades: [],
+  workers: [], // each worker stored as serializable object {id,x,y,vx,vy,emoji,cps,mass}
+  lastSaved: Date.now(),
+  dailyClaim: null
+};
+
+/* ---------- DOM refs ---------- */
+const scoreDisplay = document.getElementById('scoreDisplay');
+const clickBtn = document.getElementById('clickBtn');
+const popLayer = document.getElementById('popLayer');
+const gameArea = document.getElementById('gameArea');
+const workerCountEl = document.getElementById('workerCount') || document.getElementById('workerCount');
+const clickPowerEl = document.getElementById('clickPower') || document.getElementById('clickPower');
+const lastSavedEl = document.getElementById('lastSaved');
+
+/* ---------- SETTINGS ---------- */
+let particlesEnabled = true;
+let musicOn = true;
+const bgMusic = document.getElementById('bgMusic');
+bgMusic.volume = 0.22;
+if(musicOn) bgMusic.play().catch(()=>{/* autoplay may be blocked */});
+
+/* ---------- UTIL ---------- */
+function saveToLocal(keySuffix='default'){
+  const key = SAVE_PREFIX + (keySuffix ? '_' + keySuffix : '');
+  localStorage.setItem(key, JSON.stringify(state));
+  state.lastSaved = Date.now();
+  if(lastSavedEl) lastSavedEl.textContent = new Date(state.lastSaved).toLocaleTimeString();
+  return key;
+}
+function loadFromLocal(keySuffix='default'){
+  const key = SAVE_PREFIX + (keySuffix ? '_' + keySuffix : '');
+  const raw = localStorage.getItem(key);
+  if(!raw) return null;
+  try{
+    const obj = JSON.parse(raw);
+    state = obj;
+    if(!state.workers) state.workers = [];
+    spawnAllWorkersVisualsFromState();
+    updateScoreUI();
+    return state;
+  }catch(e){ console.error(e); return null; }
+}
+function downloadJSON(filename,jsonObj){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(jsonObj, null, 2)], {type:'application/json'}));
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+/* ---------- THEME (day/night) ---------- */
+function updateTheme(){
+  const h = new Date().getHours();
+  if(h>=6 && h<18){ document.documentElement.classList.remove('night'); document.body.style.background = 'linear-gradient(180deg,#fffafc,#fff5fb)'; }
+  else { document.documentElement.classList.add('night'); document.body.style.background = 'linear-gradient(180deg,#0d0e19,#101224)'; }
+}
+updateTheme();
+setInterval(updateTheme,60000);
+
+/* ---------- Score UI & particle fly  ---------- */
+function updateScoreUI(){
+  scoreDisplay.textContent = `Candies: ${Math.floor(state.candies)}`;
+  const workerCount = state.workers.length;
+  const wcEls = document.querySelectorAll('[id="workerCount"]');
+  wcEls.forEach(e => e.textContent = workerCount);
+  const cpEls = document.querySelectorAll('[id="clickPower"]');
+  cpEls.forEach(e => e.textContent = state.clickPower);
+}
+
+/* Create particle that arcs from (sx,sy) to score element location */
+function flyCandyToScore(sx, sy, amount=1){
+  if(!particlesEnabled) return;
+  const scoreRect = scoreDisplay.getBoundingClientRect();
+  const tx = scoreRect.left + scoreRect.width/2;
+  const ty = scoreRect.top + scoreRect.height/2;
+  const frag = document.createElement('div');
+  frag.className = 'particle';
+  frag.style.left = sx + 'px';
+  frag.style.top = sy + 'px';
+  frag.style.opacity = '1';
+  frag.style.transform = 'translateZ(0)';
+  frag.textContent = '🍬';
+  document.body.appendChild(frag);
+
+  // animate with a bezier-ish curve
+  const midX = (sx + tx)/2 + (Math.random()*80 - 40);
+  const midY = Math.min(ty, sy) - 120 - Math.random()*40;
+  const start = {x: sx, y: sy};
+  const ctrl = {x: midX, y: midY};
+  const end = {x: tx, y: ty};
+
+  const duration = 700 + Math.random()*200;
+  const startTime = performance.now();
+  function animate(){
+    const t = Math.min(1, (performance.now() - startTime)/duration);
+    // quadratic bezier
+    const ix = (1-t)*(1-t)*start.x + 2*(1-t)*t*ctrl.x + t*t*end.x;
+    const iy = (1-t)*(1-t)*start.y + 2*(1-t)*t*ctrl.y + t*t*end.y;
+    frag.style.left = ix + 'px';
+    frag.style.top = iy + 'px';
+    frag.style.transform = `scale(${1 - 0.7*t}) rotate(${t*360}deg)`;
+    frag.style.opacity = String(1 - t);
+    if(t < 1) requestAnimationFrame(animate);
+    else frag.remove();
+  }
+  requestAnimationFrame(animate);
+}
+
+/* ---------- Click behavior ---------- */
+clickBtn.addEventListener('click', (e) => {
+  state.candies += state.clickPower;
+  updateScoreUI();
+  // pop near click button
+  const rect = clickBtn.getBoundingClientRect();
+  const sx = rect.left + rect.width/2;
+  const sy = rect.top + rect.height/2;
+  showFloatingPop(sx, sy, `+${state.clickPower}`);
+  // multiple particles
+  for(let i=0;i<6;i++){
+    setTimeout(()=>flyCandyToScore(sx + (Math.random()*60 - 30), sy + (Math.random()*60 - 30), 1), i*30);
+  }
+});
+
+/* show small floating number around page coords */
+function showFloatingPop(px, py, text){
+  const el = document.createElement('div');
+  el.className = 'pop';
+  el.textContent = text;
+  el.style.left = px + 'px';
+  el.style.top = py + 'px';
+  el.style.transform = 'translate(-50%,-100%)';
+  el.style.transition = 'transform 700ms linear, opacity 700ms linear';
+  document.body.appendChild(el);
+  requestAnimationFrame(()=> { el.style.transform = 'translate(-50%,-220%)'; el.style.opacity = '0'; });
+  setTimeout(()=> el.remove(), 750);
+}
+
+/* ---------- Workers (physics + visuals) ---------- */
+const visualsByWorkerId = {}; // map id -> element
+
+function createWorkerState(emoji='🐭', cps=1){
+  return {
+    id: 'w' + Date.now() + '_' + Math.floor(Math.random()*9999),
+    x: 40 + Math.random() * (gameArea.clientWidth - 120),
+    y: 20 + Math.random() * (gameArea.clientHeight - 120),
+    vx: (Math.random()-0.5) * 40,
+    vy: (Math.random()-0.5) * 10,
+    mass: 1 + Math.random()*2,
+    cps: cps,
+    emoji: emoji
+  };
+}
+function addWorkerToState(wState){
+  state.workers.push(wState);
+  spawnWorkerVisual(wState);
+}
+function spawnWorkerVisual(wState){
+  const el = document.createElement('div');
+  el.className = 'worker';
+  el.textContent = wState.emoji || '🐭';
+  el.style.left = wState.x + 'px';
+  el.style.top = wState.y + 'px';
+  el.style.transition = 'left 120ms linear, top 120ms linear';
+  gameArea.appendChild(el);
+  visualsByWorkerId[wState.id] = el;
+
+  // dragging physics - smooth
+  let dragging = false, ox=0, oy=0;
+  el.addEventListener('mousedown', (ev)=>{
+    dragging = true;
+    ox = ev.clientX - el.offsetLeft;
+    oy = ev.clientY - el.offsetTop;
+    el.style.cursor = 'grabbing';
+  });
+  window.addEventListener('mousemove', (ev)=>{
+    if(!dragging) return;
+    const nx = ev.clientX - ox;
+    const ny = ev.clientY - oy;
+    // clamp inside
+    const rect = gameArea.getBoundingClientRect();
+    const clampedX = Math.max(4, Math.min(nx, rect.width - 36));
+    const clampedY = Math.max(4, Math.min(ny, rect.height - 36));
+    el.style.left = clampedX + 'px';
+    el.style.top = clampedY + 'px';
+    // sync state instantly
+    wState.x = clampedX; wState.y = clampedY;
+    wState.vx = 0; wState.vy = 0;
+  });
+  window.addEventListener('mouseup', ()=>{
+    if(dragging){ dragging = false; el.style.cursor = 'grab'; saveToLocal(); }
+  });
+}
+
+/* update physics on workers */
+let lastPhysics = performance.now();
+function physicsTick(){
+  const now = performance.now();
+  const dt = Math.min(0.05, (now - lastPhysics)/1000); // seconds
+  lastPhysics = now;
+  const rect = gameArea.getBoundingClientRect();
+  const floorY = rect.height - 40; // bottom limit inside gameArea
+  state.workers.forEach(w=>{
+    // simple gravity
+    const g = 120; // px/s^2
+    w.vy += g * dt;
+    // apply drag
+    w.vx *= (1 - Math.min(0.25, 0.1 * dt));
+    w.vy *= (1 - Math.min(0.25, 0.1 * dt));
+    // move
+    w.x += w.vx * dt;
+    w.y += w.vy * dt;
+    // bounds
+    if(w.x < 4){ w.x = 4; w.vx *= -0.35; }
+    if(w.x > rect.width - 36){ w.x = rect.width - 36; w.vx *= -0.35; }
+    if(w.y > floorY){ w.y = floorY; w.vy *= -0.35; if(Math.abs(w.vy) < 20) w.vy = 0; }
+    if(w.y < 4){ w.y = 4; w.vy *= -0.5; }
+    // update visual
+    const el = visualsByWorkerId[w.id];
+    if(el) { el.style.left = w.x + 'px'; el.style.top = w.y + 'px'; }
+  });
+  requestAnimationFrame(physicsTick);
+}
+requestAnimationFrame(physicsTick);
+
+/* worker payout: every second, each worker grants candies and spawns particles */
+setInterval(()=>{
+  if(state.workers.length === 0) return;
+  let total = 0;
+  state.workers.forEach(w => {
+    const amt = w.cps;
+    total += amt;
+    // spawn a few particles from worker visual to score
+    const el = visualsByWorkerId[w.id];
+    if(el){
+      const rect = el.getBoundingClientRect();
+      const sx = rect.left + rect.width/2;
+      const sy = rect.top + rect.height/2;
+      for(let i=0;i<3;i++){
+        setTimeout(()=>flyCandyToScore(sx + (Math.random()*20-10), sy + (Math.random()*20-10), amt), i*60);
+      }
+      // small shake
+      el.animate([{transform:'translateY(0)'},{transform:'translateY(-6px)'},{transform:'translateY(0)'}],{duration:500});
+    }
+  });
+  state.candies += total;
+  if(total>0) updateScoreUI();
+},1000);
+
+/* ---------- Upgrades UI ---------- */
+const upgradesList = {
+  workers: [
+    { name: 'Auto Mouse', emoji:'🐭', cost: 10, cps:1 },
+    { name: 'Candy Factory', emoji:'🏭', cost: 120, cps:8 },
+    { name: 'Sugar Drone', emoji:'🤖', cost: 600, cps:32 }
+  ],
+  clickers: [
+    { name: 'Candy Finger', emoji:'👆', cost: 20, add: 1 },
+    { name: 'Mega Finger', emoji:'✨', cost: 200, add: 5 }
+  ]
+};
+const upgradeListEl = document.getElementById('upgradeList');
+let currentTab = 'workers';
+function renderUpgrades(){
+  upgradeListEl.innerHTML = '';
+  const items = upgradesList[currentTab] || [];
+  items.forEach((it, idx) => {
+    const row = document.createElement('div');
+    row.className = 'upgradeItem';
+    row.innerHTML = `<div style="display:flex;gap:8px;align-items:center"><div style="font-size:20px">${it.emoji}</div><div><div style="font-weight:700">${it.name}</div><div class="muted">${it.cps?it.cps+' cps':'+'+ (it.add||0) +' click'}</div></div></div><div style="display:flex;align-items:center;gap:8px"><div class="muted">${it.cost} 🍬</div><button class="buyBtn">Buy</button></div>`;
+    const btn = row.querySelector('button');
+    btn.addEventListener('click', ()=>{
+      if(state.candies < it.cost) { row.animate([{transform:'translateX(-6px)'},{transform:'translateX(6px)'},{transform:'translateX(0)'}],{duration:200}); return; }
+      state.candies -= it.cost;
+      if(it.cps){
+        const w = createWorkerState(it.emoji, it.cps);
+        // place near center
+        w.x = Math.max(8, Math.min(gameArea.clientWidth-36, gameArea.clientWidth/2 + (Math.random()*80-40)));
+        w.y = Math.max(8, Math.min(gameArea.clientHeight-36, gameArea.clientHeight/2 + (Math.random()*40-20)));
+        addWorkerToState(w);
+        showFloatingPop(w.x + 20, w.y, `+${it.cps}/s`);
+      } else if(it.add){
+        state.clickPower += it.add;
+        showFloatingPop(window.innerWidth/2, 40, `Click +${it.add}`);
+      }
+      // animation for buy
+      btn.animate([{transform:'scale(1)'},{transform:'scale(0.92)'},{transform:'scale(1)'}],{duration:280});
+      saveToLocal();
+      updateScoreUI();
+    });
+    upgradeListEl.appendChild(row);
+  });
+}
+document.getElementById('tabWorkers').addEventListener('click', ()=>{ currentTab='workers'; renderUpgrades();});
+document.getElementById('tabClickers').addEventListener('click', ()=>{ currentTab='clickers'; renderUpgrades();});
+renderUpgrades();
+
+/* ---------- Mini-game (whack) ---------- */
+const moleGrid = document.getElementById('moleGrid');
+for(let i=0;i<9;i++){
+  const m = document.createElement('div'); m.className='mole'; m.textContent=''; moleGrid.appendChild(m);
+}
+function spawnRandomMole(){
+  const cells = Array.from(moleGrid.children);
+  cells.forEach(c=> c.textContent = '');
+  const idx = Math.floor(Math.random()*cells.length);
+  const target = cells[idx];
+  target.textContent = '🐹';
+  target.animate([{transform:'scale(1)'},{transform:'scale(1.15)'},{transform:'scale(1)'}],{duration:600,iterations:1});
+}
+setInterval(spawnRandomMole, 900);
+moleGrid.addEventListener('click', (ev)=>{
+  const t = ev.target;
+  if(t && t.classList.contains('mole') && t.textContent==='🐹'){
+    state.candies += 8; updateScoreUI();
+    const rect = t.getBoundingClientRect();
+    flyCandyToScore(rect.left + rect.width/2, rect.top + rect.height/2, 8);
+    t.textContent = '';
+  }
+});
+
+/* ---------- Gamble ---------- */
+document.getElementById('rollGamble').addEventListener('click', ()=>{
+  const amt = Math.max(1, Math.floor(Number(document.getElementById('gambleAmount').value || 0)));
+  const out = document.getElementById('gambleResult');
+  if(amt <= 0 || amt > state.candies){ out.textContent = 'Invalid amount.'; return; }
+  const r = Math.random();
+  let change = 0;
+  if(r < 0.45) change = -Math.floor(amt * 0.5);
+  else if(r < 0.85) change = amt;
+  else change = amt * 2;
+  state.candies += change;
+  if(state.candies < 0) state.candies = 0;
+  updateScoreUI();
+  out.textContent = change >= 0 ? `You won ${change} 🍬` : `You lost ${-change} 🍬`;
+  // visual
+  showFloatingPop(window.innerWidth/2, 80, out.textContent);
+  saveToLocal();
+});
+
+/* ---------- Admin / Owner features (local saves view/export/import) ---------- */
+const ownerUnlockBtn = document.getElementById('ownerUnlock');
+const ownerLockBtn = document.getElementById('ownerLock');
+const ownerPassInput = document.getElementById('ownerPass');
+const ownerArea = document.getElementById('ownerArea');
+const localSavesSelect = document.getElementById('localSaves');
+const viewSaveBtn = document.getElementById('viewSave');
+const exportSaveBtn = document.getElementById('exportSave');
+const deleteSaveBtn = document.getElementById('deleteSave');
+const importFileInput = document.getElementById('importFile');
+const importApplyBtn = document.getElementById('importApply');
+const ownerMsg = document.getElementById('ownerMsg') || document.getElementById('ownerMsg');
+
+const OWNER_PASSWORD = 'candyforlife123'; // per request
+
+function listLocalSaves(){
+  localSavesSelect.innerHTML = '';
+  // find keys with prefix
+  for(let i=0;i<localStorage.length;i++){
+    const key = localStorage.key(i);
+    if(key && key.startsWith(SAVE_PREFIX)){
+      const opt = document.createElement('option'); opt.value = key; opt.textContent = key; localSavesSelect.appendChild(opt);
+    }
+  }
+}
+ownerUnlockBtn.addEventListener('click', ()=>{
+  if(ownerPassInput.value === OWNER_PASSWORD){
+    ownerArea.style.display = 'block';
+    ownerUnlockBtn.style.display = 'none';
+    ownerLockBtn.style.display = 'inline-block';
+    listLocalSaves();
+    alert('Owner unlocked: local admin mode enabled (only this browser).');
+  } else {
+    alert('Wrong password.');
+  }
+});
+ownerLockBtn.addEventListener('click', ()=>{
+  ownerArea.style.display = 'none';
+  ownerUnlockBtn.style.display = 'inline-block';
+  ownerLockBtn.style.display = 'none';
+});
+
+viewSaveBtn.addEventListener('click', ()=>{
+  const key = localSavesSelect.value;
+  if(!key){ alert('No save selected'); return; }
+  const raw = localStorage.getItem(key);
+  try{
+    const obj = JSON.parse(raw);
+    alert('Save content (first-level):\n' + JSON.stringify(obj, Object.keys(obj).slice(0,8), 2));
+  }catch(e){ alert('Failed to parse save'); }
+});
+
+exportSaveBtn.addEventListener('click', ()=>{
+  const key = localSavesSelect.value;
+  if(!key){ alert('Select a save'); return; }
+  const raw = localStorage.getItem(key);
+  downloadJSON(key + '.json', JSON.parse(raw));
+});
+
+deleteSaveBtn.addEventListener('click', ()=>{
+  const key = localSavesSelect.value;
+  if(!key){ alert('Select a save'); return; }
+  if(confirm('Delete save ' + key + ' ?')){ localStorage.removeItem(key); listLocalSaves(); alert('Deleted'); }
+});
+
+/* Import: load JSON file contents into localStorage and optionally apply */
+importApplyBtn.addEventListener('click', ()=>{
+  const f = importFileInput.files[0];
+  if(!f){ alert('Choose a JSON file'); return; }
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try{
+      const data = JSON.parse(reader.result);
+      // Option: save into a new localStorage key
+      const key = SAVE_PREFIX + '_import_' + Date.now();
+      localStorage.setItem(key, JSON.stringify(data));
+      listLocalSaves();
+      if(confirm('Import saved as ' + key + '. Apply to current game now?')){
+        state = data;
+        spawnAllWorkersVisualsFromState();
+        updateScoreUI();
+        saveToLocal();
+        alert('Applied imported save to game.');
+      } else {
+        alert('Imported but not applied. You can apply from the list later.');
+      }
+    }catch(e){ alert('Invalid JSON'); }
+  };
+  reader.readAsText(f);
+});
+
+/* Cloud buttons: placeholders that show how to do it securely */
+document.getElementById('cloudUpload').addEventListener('click', async ()=>{
+  alert('Cloud upload is a placeholder. To enable cross-device saves you must deploy a secure server and call its APIs with authentication. See console for example payload.');
+  console.log('Example cloud upload payload (send only over HTTPS with auth):', state);
+});
+document.getElementById('cloudList').addEventListener('click', ()=>{
+  alert('Cloud list placeholder. Implement server endpoint /api/list-saves authenticated with JWT or similar.');
+});
+
+/* ---------- Settings panel logic: Save/Load/Clear/Download ---------- */
+document.getElementById('openSettings').addEventListener('click', ()=>document.getElementById('settingsPanel').style.display='block');
+document.getElementById('closeSettings').addEventListener('click', ()=>document.getElementById('settingsPanel').style.display='none');
+
+document.getElementById('saveBtn').addEventListener('click', ()=>{
+  saveToLocal();
+  alert('Saved locally.');
+});
+document.getElementById('downloadSave').addEventListener('click', ()=>{
+  downloadJSON('candy_save_' + Date.now() + '.json', state);
+});
+document.getElementById('loadBtn').addEventListener('click', ()=>{
+  const loaded = loadFromLocal();
+  if(loaded) alert('Loaded from default local save'); else alert('No default save found');
+});
+document.getElementById('clearBtn').addEventListener('click', ()=>{
+  if(confirm('Clear local default save?')){
+    localStorage.removeItem(SAVE_PREFIX + '_default');
+    alert('Cleared');
+  }
+});
+document.getElementById('toggleMusic').addEventListener('change', (e)=>{
+  musicOn = e.target.checked;
+  bgMusic.muted = !musicOn;
+});
+document.getElementById('toggleParticles').addEventListener('change', (e)=>{
+  particlesEnabled = e.target.checked;
+});
+
+/* ---------- Tutorial open/close ---------- */
+document.getElementById('openTutorial').addEventListener('click', ()=>document.getElementById('tutorial').style.display='block');
+document.getElementById('closeTutorial').addEventListener('click', ()=>document.getElementById('tutorial').style.display='none');
+
+/* ---------- Spawn existing worker visuals if state had workers ---------- */
+function spawnAllWorkersVisualsFromState(){
+  // clear existing visuals
+  Object.values(visualsByWorkerId).forEach(el=>el.remove());
+  for(const w of state.workers){
+    spawnWorkerVisual(w);
+  }
+}
+
+/* ---------- Simple auto-save to default key on interval ---------- */
+setInterval(()=>{ saveToLocal('default'); }, 5000);
+
+/* ---------- Start with some demo data if no save ---------- */
+if(!localStorage.getItem(SAVE_PREFIX + '_default')){
+  // starting demo
+  state.candies = 20;
+  state.clickPower = 1;
+  // one worker
+  state.workers = [ createWorkerState('🐭', 1) ];
+  spawnAllWorkersVisualsFromState();
+  saveToLocal('default');
+} else {
+  loadFromLocal('default');
+}
+
+/* ---------- Update UI loop ---------- */
+setInterval(updateScoreUI, 500);
+
+/* ---------- Helper: spawn worker visuals from loaded state ---------- */
+function spawnAllWorkersVisualsFromState(){
+  // remove any existing visuals
+  for(const id in visualsByWorkerId){ const el = visualsByWorkerId[id]; if(el) el.remove(); delete visualsByWorkerId[id]; }
+  // spawn
+  state.workers.forEach(w => spawnWorkerVisual(w));
+}
+
+/* ---------- Helper: show small floating pop at coords (global) ---------- */
+function showFloatingPop(x,y,text){
+  const el = document.createElement('div');
+  el.className = 'pop';
+  el.textContent = text;
+  el.style.left = x + 'px';
+  el.style.top = y + 'px';
+  el.style.transform = 'translate(-50%,-50%)';
+  document.body.appendChild(el);
+  el.animate([{opacity:1, transform:'translate(-50%,-50%) translateY(0)'},{opacity:0, transform:'translate(-50%,-220%) translateY(-40px)'}],{duration:900});
+  setTimeout(()=>el.remove(),950);
+}
+
+/* ---------- Misc: save listing on owner open ---------- */
+function refreshLocalSavesList(){
+  if(localSavesSelect) listLocalSaves();
+}
+function listLocalSaves(){
+  localSavesSelect.innerHTML = '';
+  for(let i=0;i<localStorage.length;i++){
+    const key = localStorage.key(i);
+    if(key && key.indexOf(SAVE_PREFIX) === 0){
+      const opt = document.createElement('option');
+      opt.value = key; opt.textContent = key;
+      localSavesSelect.appendChild(opt);
+    }
+  }
+}
+listLocalSaves();
+
+/* ---------- Start physics loop ---------- */
+lastPhysics = performance.now();
+requestAnimationFrame(physicsTick);
+
+</script>
+</body>
+</html>
